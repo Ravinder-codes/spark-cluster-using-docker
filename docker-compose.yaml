@@ -1,0 +1,65 @@
+version: "3.9"
+
+networks:
+  spark-network:
+    driver: bridge
+
+services: 
+  # Driver container
+  spark-driver: 
+    build: .
+    image: ${IMAGE_NAME}
+    container_name: spark-driver
+    ports: 
+      - "${SPARK_UI_PORT}:4040"
+      - "${DRIVER_PORT}:${DRIVER_PORT}"
+    volumes:
+      - ./app:/app/
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_DRIVER_PORT=${DRIVER_PORT}
+    entrypoint: 
+      - spark-submit
+      - --master 
+      - spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} 
+      - /app/spark.py
+    networks:
+      - spark-network
+
+  # Master container
+  spark-master:
+    build: .
+    image: ${IMAGE_NAME}
+    container_name: spark-master
+    ports:
+      - "${SPARK_MASTER_UI_PORT}:8080"
+      - "${SPARK_MASTER_PORT}:${SPARK_MASTER_PORT}"
+    environment:
+      - SPARK_MASTER_HOST=${SPARK_MASTER_HOST}
+      - SPARK_MASTER_PORT=${SPARK_MASTER_PORT}
+    entrypoint: 
+      - /bin/sh 
+      - -c
+      - start-master.sh && tail -f /dev/null
+    networks:
+      - spark-network
+
+  # Worker Container  
+  spark-worker:
+    build: .
+    image: ${IMAGE_NAME}
+    depends_on: 
+      - spark-master
+    environment:
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
+    deploy:
+      mode: replicated
+      replicas: ${WORKERS_COUNT}
+    entrypoint: 
+      - /bin/sh
+      - -c
+      - start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} && tail -f /dev/null
+    networks:
+      - spark-network
